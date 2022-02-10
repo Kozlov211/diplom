@@ -240,7 +240,7 @@ def finding_the_probability_of_error(g1, g2):
 
 # out_bits = np.array([1, 0, 1, 1, 0])
 # out_bits = np.ones(10, dtype='int')
-out_bits = np.random.randint(2, size=100000)
+out_bits = np.random.randint(2, size=1000)
 # !!!СТЕПЕНЬ МНОГОЧЛЕНА СЛЕВА - 0!!!
 g1 = np.array([1, 0, 1, 1, 0, 1, 1])  # 133
 g2 = np.array([1, 1, 1, 1, 0, 0, 1])  # 171
@@ -252,15 +252,15 @@ g2 = np.array([1, 1, 1, 1, 0, 0, 1])  # 171
 # g2 = np.array([1, 0, 1])
 matrix_of_polynomials = np.array([g1, g2])
 print('Hello')
-# code_sequences = coding_with_speed_1_2(out_bits, matrix_of_polynomials)
-# state_matrix, transition_matrix = trellis(matrix_of_polynomials)
+code_sequences = coding_with_speed_1_2(out_bits, matrix_of_polynomials)
+state_matrix, transition_matrix = trellis(matrix_of_polynomials)
 # print(state_matrix)
 # states_old = np.argwhere(state_matrix == 1)
 # print(states_old)
 # print(states_old[0][0], states_old[1][0])
 # print(transition_matrix[:state_matrix.shape[0]], transition_matrix[state_matrix.shape[0]:], sep='\n')
-# in_bits = decoding_viterbi(code_sequences, matrix_of_polynomials, state_matrix, transition_matrix)
-# print(signal_comparison(out_bits, in_bits))
+in_bits = decoding_viterbi(code_sequences, matrix_of_polynomials, state_matrix, transition_matrix)
+print(signal_comparison(out_bits, in_bits))
 # print(out_bits, in_bits, sep='\n')
 # in_bits = decoding_viterbi_with_window(code_sequences, matrix_of_polynomials, state_matrix, transition_matrix, 100)
 # print(out_bits, in_bits,sep='\n')
