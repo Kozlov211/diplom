@@ -1,7 +1,6 @@
 import numpy as np
 
 
-
 def coding_with_speed_1_2(bits: np.array, matrix_of_polynomials: np.array, states=None):
     if states:  # Для построения матриц состояний и переходов
         states = np.flip(states)  # Инверсия состояний
@@ -25,17 +24,18 @@ def coding_with_speed_1_2(bits: np.array, matrix_of_polynomials: np.array, state
             count += 1
     return coding_sequences
 
-g1 = np.array([1,1,1])
-g2 = np.array([1,0,1])
+
+g1 = np.array([1, 1, 1])
+g2 = np.array([1, 0, 1])
 matrix_of_polynomials = np.array([g1, g2])
 fout_data = open("traning_data.txt", "w")
 fout_ans = open("ans_data.txt", "w")
-for _ in range(10):
+for _ in range(40):
     out_bits = np.random.randint(2, size=3)
-    code_sequences =  coding_with_speed_1_2(out_bits, matrix_of_polynomials)
-    print(code_sequences, out_bits[0])
+    code_sequences = coding_with_speed_1_2(out_bits, matrix_of_polynomials)
+    # print(code_sequences)
+    # print(out_bits[0])
     np.savetxt(fout_data, code_sequences)
     np.savetxt(fout_ans, out_bits[0:1])
 fout_data.close()
 fout_ans.close()
-    
