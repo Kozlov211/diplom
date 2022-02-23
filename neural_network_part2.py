@@ -50,6 +50,7 @@ n_outputs = 1  # Выходной нейрон
 
 features_norm = normalize(features)  # Нормализация признаков
 train_x = np.transpose(features_norm)
+print(train_x.shape)
 train_y = labels.reshape(1, len(labels))
 X = tf.compat.v1.placeholder(tf.float32, [n_dim, None])  # Содержит матрицу X[xn, m] m - не объявляется
 Y = tf.compat.v1.placeholder(tf.float32, [1, None])  # Содержит выходные значения размерности [1, m]

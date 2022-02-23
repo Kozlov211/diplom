@@ -35,8 +35,11 @@ n_dim = features.shape[1]  # Признаки
 print('Набор данных имеет', n_training_samples, 'тренировочных образцов')
 print('Набор данных имеет', n_dim, 'признаков')
 features_norm = normalize(features)  # Нормализация признаков
+
 train_x = np.transpose(features_norm)
+print(train_x.shape)
 train_y = labels.reshape(1, len(labels))
+print(train_y.shape)
 X = tf.compat.v1.placeholder(tf.float32, [n_dim, None])  # Содержит матрицу X[xn, m] m - не объявляется
 Y = tf.compat.v1.placeholder(tf.float32, [1, None])  # Содержит выходные значения размерности [1, m]
 learning_rate = tf.compat.v1.placeholder(tf.float32, shape=())  # Содержит темп заучивания
@@ -45,12 +48,12 @@ W = tf.compat.v1.Variable(tf.random.truncated_normal([n_dim, 1], stddev=stddev))
 b = tf.compat.v1.Variable(tf.zeros(1))  # Содержит смещение
 init = tf.compat.v1.global_variables_initializer()  # Инициализация переменных
 y_ = tf.sigmoid(tf.matmul(tf.transpose(W), X) + b)  # Вычисляет выходной нейрон
-cost = - tf.reduce_mean(Y * tf.math.log(y_) + (1 - Y) * tf.math.log(1 - y_))  # Определяет стоимостную функцию
+cost = - tf.math.reduce_mean(Y * tf.math.log(y_) + (1 - Y) * tf.math.log(1 - y_))  # Определяет стоимостную функцию
 training_step = tf.compat.v1.train.GradientDescentOptimizer(learning_rate).minimize(cost)
 sees, cost_history = run_logistic_model(learning_r=0.002, training_epochs=20000, train_obs=train_x,
                                         train_labels=train_y, debug=True)
 
-correct_predictionl = tf.equal(tf.greater(y_, 0.5), tf.equal(Y, 1))
+correct_predictionl = tf.equal(tf.math.greater(y_, 0.5), tf.equal(Y, 1))
 accuracy = tf.reduce_mean(tf.cast(correct_predictionl, tf.float32))
 print(sees.run(accuracy, feed_dict={X: train_x, Y: train_y, learning_rate: 0.002}))
 # print(sees.run(W))
