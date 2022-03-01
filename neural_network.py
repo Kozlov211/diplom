@@ -1,6 +1,7 @@
 import numpy as np
 # import tensorflow as tf
 import random
+import matplotlib.pyplot as plt
 
 
 def generate_numbers(alphabet: int, alphabet_length: int, prefix=None, arrays=None):
@@ -134,15 +135,29 @@ def check_transition_zeroing(check_transition):
         check_transition[i] = [False, False]
 
 
+def plot_states(states):
+    numbers_of_states = np.arange(0, states.shape[1], dtype=int)
+    fig, ax = plt.subplots()
+    for i in range(states.shape[0]):
+        ax.plot(numbers_of_states, states[i], label=str(i), linestyle=':')
+    ax.grid()
+    ax.legend()
+    ax.invert_yaxis()
+    plt.show()
+
+
 def train_all_data(matrix_of_polynomials, iteration):
     state_matrix, transition_matrix, check_transition = trellis(matrix_of_polynomials)
+    print(state_matrix, transition_matrix)
     number_of_registers = matrix_of_polynomials[0].size  # Количество регистров
     bits = np.zeros(((2 ** number_of_registers + 1) * iteration), dtype=int)
     out_bits = np.zeros((bits.size, 2), dtype=int)
     state = np.random.randint(2 ** (number_of_registers - 1))
+    states = np.zeros((iteration, (2 ** number_of_registers + 1)), dtype=int)
     counter = 0
     for i in range(iteration):
         for j in range(2 ** number_of_registers):
+            states[i][j] = state
             new_state = choice_next_state(state_matrix, state, check_transition)
             if state_matrix[state][0] == new_state:
                 bits[counter] = 0
@@ -153,6 +168,7 @@ def train_all_data(matrix_of_polynomials, iteration):
                 out_bits[counter] = transition_matrix[state][1]
                 counter += 1
             state = new_state
+        print(check_transition)
         bit = np.random.randint(2)
         new_state = state_matrix[state][bit]
         if state_matrix[state][0] == new_state:
@@ -164,8 +180,11 @@ def train_all_data(matrix_of_polynomials, iteration):
             out_bits[counter] = transition_matrix[state][1]
             counter += 1
         state = new_state
+        states[i][-1] = state
         check_transition_zeroing(check_transition)
+    plot_states(states)
     return out_bits
+
 
 def data_test_with_error(bits_size, err, step, matrix_of_polynomials):
     err_bits = step // 2 - 1
@@ -239,16 +258,19 @@ def choice_neural_model(labels, model, iterations, bits_size, matrix_of_polynomi
 
 # g1 = np.array([1, 1, 1])
 # g2 = np.array([1, 0, 1])
+# g1 = np.array([1, 1, 0, 1])  # 15
+# g2 = np.array([1, 1, 1, 1])  # 17
+g1 = np.array([1, 0, 0, 1, 1])  # 23
+g2 = np.array([1, 1, 1, 0, 1])  # 35
 # g1 = np.array([1, 0, 1, 1, 0, 1, 1])  # 133
 # g2 = np.array([1, 1, 1, 1, 0, 0, 1])  # 171
-g1 = np.array([1, 1, 0, 1])  # 15
-g2 = np.array([1, 1, 1, 1])  # 17
+
 matrix_of_polynomials = np.array([g1, g2])
 bits_size = 5000
 window = 16
-iterations = 2
+iterations = 1
 # model = tf.keras.models.Sequential()
 # state_matrix, transition_matrix, check_transition = trellis(matrix_of_polynomials)
 # print(state_matrix, transition_matrix, check_transition, sep='\n')
-print(train_all_data(matrix_of_polynomials, iterations))
+train_all_data(matrix_of_polynomials, iterations)
 # choice_neural_model(window, model, iterations, bits_size, matrix_of_polynomials)
