@@ -92,42 +92,53 @@ def data_training(bits_size, step, matrix_of_polynomials):
     return x_train, y_train.T
 
 
-def check_next_state(state_matrix, state, check_transition):
-    if check_transition[state][1]:
-        bit = 0
-        new_state = state_matrix[state][bit]
-        check_transition[state][bit] = True
-        return new_state
-    if check_transition[state][0]:
+def check_next_state(state_matrix, state, check_transition, direction_of_travel):
+    if direction_of_travel:
         bit = 1
-        new_state = state_matrix[state][bit]
-        check_transition[state][bit] = True
-        return new_state
-    if sum(check_transition[state_matrix[state][0]]) == sum(check_transition[state_matrix[state][1]]):
-        bit = np.random.randint(2)
-        new_state = state_matrix[state][bit]
-        check_transition[state][bit] = True
-        return new_state
-    if sum(check_transition[state_matrix[state][0]]) < sum(check_transition[state_matrix[state][1]]):
+        if sum(check_transition[state_matrix[state][1]]) == 2:
+            bit = 0
+            direction_of_travel = bit * 1
+            new_state = state_matrix[state][bit]
+            check_transition[state][bit] = True
+        else:
+            new_state = state_matrix[state][bit]
+            check_transition[state][bit] = True
+        return new_state, direction_of_travel
+    if direction_of_travel == 0:
         bit = 0
-        new_state = state_matrix[state][bit]
-        check_transition[state][bit] = True
-        return new_state
-    if sum(check_transition[state_matrix[state][0]]) > sum(check_transition[state_matrix[state][1]]):
-        bit = 1
-        new_state = state_matrix[state][bit]
-        check_transition[state][bit] = True
-        return new_state
+        if sum(check_transition[state_matrix[state][0]]) == 2:
+            bit = 1
+            new_state = state_matrix[state][bit]
+            direction_of_travel = bit * 1
+            check_transition[state][bit] = True
+        else:
+            new_state = state_matrix[state][bit]
+            check_transition[state][bit] = True
+        return new_state, direction_of_travel
 
 
-def choice_next_state(state_matrix, state, check_transition):
+def choice_next_state(state_matrix, state, check_transition, direction_of_travel):
     if state == state_matrix[state][0] and not check_transition[state][0]:
         check_transition[state][0] = True
-        return state
+        direction_of_travel = 1
+        return state, direction_of_travel
     if state == state_matrix[state][1] and not check_transition[state][1]:
         check_transition[state][1] = True
-        return state
-    return check_next_state(state_matrix, state, check_transition)
+        direction_of_travel = 0
+        return state, direction_of_travel
+    if check_transition[state][1]:
+        bit = 0
+        direction_of_travel = 0
+        new_state = state_matrix[state][bit]
+        check_transition[state][bit] = True
+        return new_state, direction_of_travel
+    if check_transition[state][0]:
+        bit = 1
+        direction_of_travel = 1
+        new_state = state_matrix[state][bit]
+        check_transition[state][bit] = True
+        return new_state, direction_of_travel
+    return check_next_state(state_matrix, state, check_transition, direction_of_travel)
 
 
 def check_transition_zeroing(check_transition):
@@ -148,17 +159,20 @@ def plot_states(states):
 
 def train_all_data(matrix_of_polynomials, iteration):
     state_matrix, transition_matrix, check_transition = trellis(matrix_of_polynomials)
-    print(state_matrix, transition_matrix)
+    for key, value in state_matrix.items():
+        print(key, ":", value)
     number_of_registers = matrix_of_polynomials[0].size  # Количество регистров
     bits = np.zeros(((2 ** number_of_registers + 1) * iteration), dtype=int)
     out_bits = np.zeros((bits.size, 2), dtype=int)
-    state = np.random.randint(2 ** (number_of_registers - 1))
+    state = np.random.randint(1, 2 ** (number_of_registers - 1))
     states = np.zeros((iteration, (2 ** number_of_registers + 1)), dtype=int)
     counter = 0
     for i in range(iteration):
+        direction_of_travel = np.random.randint(2)
         for j in range(2 ** number_of_registers):
             states[i][j] = state
-            new_state = choice_next_state(state_matrix, state, check_transition)
+            new_state, direction_of_travel = choice_next_state(state_matrix, state, check_transition,
+                                                               direction_of_travel)
             if state_matrix[state][0] == new_state:
                 bits[counter] = 0
                 out_bits[counter] = transition_matrix[state][0]
@@ -168,8 +182,11 @@ def train_all_data(matrix_of_polynomials, iteration):
                 out_bits[counter] = transition_matrix[state][1]
                 counter += 1
             state = new_state
-        print(check_transition)
-        bit = np.random.randint(2)
+        # print(check_transition)
+        if state == 1 or state == 0:
+            bit = 1
+        else:
+            bit = np.random.randint(2)
         new_state = state_matrix[state][bit]
         if state_matrix[state][0] == new_state:
             bits[counter] = 0
@@ -268,7 +285,7 @@ g2 = np.array([1, 1, 1, 0, 1])  # 35
 matrix_of_polynomials = np.array([g1, g2])
 bits_size = 5000
 window = 16
-iterations = 1
+iterations = 5
 # model = tf.keras.models.Sequential()
 # state_matrix, transition_matrix, check_transition = trellis(matrix_of_polynomials)
 # print(state_matrix, transition_matrix, check_transition, sep='\n')
