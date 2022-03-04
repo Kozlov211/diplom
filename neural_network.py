@@ -92,53 +92,52 @@ def data_training(bits_size, step, matrix_of_polynomials):
     return x_train, y_train.T
 
 
-def check_next_state(state_matrix, state, check_transition, direction_of_travel):
-    if direction_of_travel:
-        bit = 1
-        if sum(check_transition[state_matrix[state][1]]) == 2:
-            bit = 0
-            direction_of_travel = bit * 1
-            new_state = state_matrix[state][bit]
-            check_transition[state][bit] = True
-        else:
-            new_state = state_matrix[state][bit]
-            check_transition[state][bit] = True
-        return new_state, direction_of_travel
-    if direction_of_travel == 0:
-        bit = 0
-        if sum(check_transition[state_matrix[state][0]]) == 2:
-            bit = 1
-            new_state = state_matrix[state][bit]
-            direction_of_travel = bit * 1
-            check_transition[state][bit] = True
-        else:
-            new_state = state_matrix[state][bit]
-            check_transition[state][bit] = True
-        return new_state, direction_of_travel
+def check_next_state(state_matrix, state, check_transition, final_states):
+    if state_matrix[state][0] == final_states[0] or state_matrix[state][1] == final_states[0] or state_matrix[state][0] == final_states[1] or state_matrix[state][1] == final_states[1]:
+        bit = final_states[-1]
+        new_state = state_matrix[state][bit]
+        check_transition[state][bit] = True
+        return new_state
+    if state == final_states[0] or state == final_states[1]:
+        bit = final_states[-1]
+        new_state = state_matrix[state][bit]
+        check_transition[state][bit] = True
+        return new_state
+    else:
+        bit = np.random.randint(2)
+        new_state = state_matrix[state][bit]
+        check_transition[state][bit] = True
+        return new_state
 
 
-def choice_next_state(state_matrix, state, check_transition, direction_of_travel):
+def choice_next_state(state_matrix, state, check_transition, final_states):
     if state == state_matrix[state][0] and not check_transition[state][0]:
         check_transition[state][0] = True
-        direction_of_travel = 1
-        return state, direction_of_travel
+        return state
     if state == state_matrix[state][1] and not check_transition[state][1]:
         check_transition[state][1] = True
-        direction_of_travel = 0
-        return state, direction_of_travel
+        return state
     if check_transition[state][1]:
         bit = 0
-        direction_of_travel = 0
         new_state = state_matrix[state][bit]
         check_transition[state][bit] = True
-        return new_state, direction_of_travel
+        return new_state
     if check_transition[state][0]:
         bit = 1
-        direction_of_travel = 1
         new_state = state_matrix[state][bit]
         check_transition[state][bit] = True
-        return new_state, direction_of_travel
-    return check_next_state(state_matrix, state, check_transition, direction_of_travel)
+        return new_state
+    if state_matrix[state][final_states[-1]] == final_states[0]:
+        bit = (~final_states[-1]) % 2
+        new_state = state_matrix[state][bit]
+        check_transition[state][bit] = True
+        return new_state
+    if state_matrix[state][final_states[-1]] == final_states[1]:
+        bit = (~final_states[-1]) % 2
+        new_state = state_matrix[state][bit]
+        check_transition[state][bit] = True
+        return new_state
+    return check_next_state(state_matrix, state, check_transition, final_states)
 
 
 def check_transition_zeroing(check_transition):
@@ -157,22 +156,36 @@ def plot_states(states):
     plt.show()
 
 
+def find_final_states(final_states, state, state_matrix):
+    counter = 0
+    for key, value in state_matrix.items():
+        if state == value[0]:
+            final_states[counter] = key
+            counter += 1
+            final_states[-1] = 0
+        elif state == value[1]:
+            final_states[counter] = key
+            counter += 1
+            final_states[-1] = 1
+
+
 def train_all_data(matrix_of_polynomials, iteration):
     state_matrix, transition_matrix, check_transition = trellis(matrix_of_polynomials)
-    for key, value in state_matrix.items():
-        print(key, ":", value)
+    # for key, value in state_matrix.items():
+    #     print(key, ":", value)
     number_of_registers = matrix_of_polynomials[0].size  # Количество регистров
     bits = np.zeros(((2 ** number_of_registers + 1) * iteration), dtype=int)
     out_bits = np.zeros((bits.size, 2), dtype=int)
-    state = np.random.randint(1, 2 ** (number_of_registers - 1))
+    state = np.random.randint(1, 2 ** (number_of_registers - 1) - 1)
     states = np.zeros((iteration, (2 ** number_of_registers + 1)), dtype=int)
     counter = 0
+    final_states = np.zeros(3, dtype=int)
     for i in range(iteration):
-        direction_of_travel = np.random.randint(2)
+        print(state)
+        find_final_states(final_states, state, state_matrix)
         for j in range(2 ** number_of_registers):
             states[i][j] = state
-            new_state, direction_of_travel = choice_next_state(state_matrix, state, check_transition,
-                                                               direction_of_travel)
+            new_state = choice_next_state(state_matrix, state, check_transition, final_states)
             if state_matrix[state][0] == new_state:
                 bits[counter] = 0
                 out_bits[counter] = transition_matrix[state][0]
@@ -182,22 +195,14 @@ def train_all_data(matrix_of_polynomials, iteration):
                 out_bits[counter] = transition_matrix[state][1]
                 counter += 1
             state = new_state
-        # print(check_transition)
-        if state == 1 or state == 0:
+        if state == 0:
             bit = 1
         else:
             bit = np.random.randint(2)
         new_state = state_matrix[state][bit]
-        if state_matrix[state][0] == new_state:
-            bits[counter] = 0
-            out_bits[counter] = transition_matrix[state][0]
-            counter += 1
-        else:
-            bits[counter] = 1
-            out_bits[counter] = transition_matrix[state][1]
-            counter += 1
         state = new_state
         states[i][-1] = state
+        print(check_transition)
         check_transition_zeroing(check_transition)
     plot_states(states)
     return out_bits
