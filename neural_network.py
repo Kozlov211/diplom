@@ -1,7 +1,8 @@
 import numpy as np
-# import tensorflow as tf
+import tensorflow as tf
 import random
 import matplotlib.pyplot as plt
+from datetime import datetime
 
 
 def generate_numbers(alphabet: int, alphabet_length: int, prefix=None, arrays=None):
@@ -76,33 +77,80 @@ def add_noise_in_bits(bits: np.array, bit_error_rate: float):
     return bits_with_error
 
 
-def data_training(bits_size, step, matrix_of_polynomials):
+def get_states(matrix_of_polynomials, code_sequences):
+    state_matrix, transition_matrix, _ = trellis(matrix_of_polynomials)
+    states = np.zeros(code_sequences.size // 2, dtype=int)
+    for i in range(code_sequences.size // 2 - 1):
+        if np.all(transition_matrix[states[i]][0] == code_sequences[2 * i: 2 * i + 2]):
+            states[i + 1] = state_matrix[states[i]][0]
+        else:
+            states[i + 1] = state_matrix[states[i]][1]
+    return states[1:]
+
+
+def data_training_random(matrix_of_polynomials, bits_size, step):
     err_bits = step // 2 - 1
     bits_size += err_bits
-    matrix_of_polynomials = np.array([g1, g2])
     out_bits = np.random.randint(2, size=bits_size)
     code_sequences = coding_with_speed_1_2(out_bits, matrix_of_polynomials)
+    states = get_states(matrix_of_polynomials, code_sequences)
+    get_states(matrix_of_polynomials, code_sequences)
+    x_train = np.zeros((bits_size - err_bits, step), np.int32)
+    y_train = out_bits[:bits_size - err_bits]
+    start = 0
+    for i in range(bits_size - err_bits):
+        x_train[i] = np.array(code_sequences[start:step])
+        start += 2
+        step += 2
+    return x_train, y_train.T, states[:y_train.size]
+
+
+def data_test_with_error(matrix_of_polynomials, bits_size, step, err):
+    err_bits = step // 2 - 1
+    bits_size += err_bits
+    out_bits = np.random.randint(2, size=bits_size)
+    code_sequences = coding_with_speed_1_2(out_bits, matrix_of_polynomials)
+    code_sequences_with_noise = add_noise_in_bits(code_sequences, err)
     start = 0
     x_train = np.zeros((bits_size - err_bits, step), np.int32)
     y_train = out_bits[:bits_size - err_bits]
     for i in range(bits_size - err_bits):
-        x_train[i] = np.array(code_sequences[start:step])
+        x_train[i] = np.array(code_sequences_with_noise[start:step])
         start += 2
         step += 2
     return x_train, y_train.T
 
 
-def check_next_state(state_matrix, state, check_transition, final_states):
-    if state_matrix[state][0] == final_states[0] or state_matrix[state][1] == final_states[0] or state_matrix[state][0] == final_states[1] or state_matrix[state][1] == final_states[1]:
-        bit = final_states[-1]
+def choice_next_state_with_repetition(state_matrix, state, check_transition):
+    if state == state_matrix[state][0] and not check_transition[state][0]:
+        check_transition[state][0] = True
+        return state
+    if state == state_matrix[state][1] and not check_transition[state][1]:
+        check_transition[state][1] = True
+        return state
+    if sum(check_transition[state]) == 2 and state == state_matrix[state][0]:
+        bit = 1
+        new_state = state_matrix[state][bit]
+        return new_state
+    if sum(check_transition[state]) == 2 and state == state_matrix[state][1]:
+        bit = 0
+        new_state = state_matrix[state][bit]
+        return new_state
+    if sum(check_transition[state]) == 2:
+        bit = np.random.randint(2)
+        new_state = state_matrix[state][bit]
+        return new_state
+    if check_transition[state][1]:
+        bit = 0
         new_state = state_matrix[state][bit]
         check_transition[state][bit] = True
         return new_state
-    if state == final_states[0] or state == final_states[1]:
-        bit = final_states[-1]
+    if check_transition[state][0]:
+        bit = 1
         new_state = state_matrix[state][bit]
         check_transition[state][bit] = True
         return new_state
+
     else:
         bit = np.random.randint(2)
         new_state = state_matrix[state][bit]
@@ -110,7 +158,49 @@ def check_next_state(state_matrix, state, check_transition, final_states):
         return new_state
 
 
-def choice_next_state(state_matrix, state, check_transition, final_states):
+def check_transition_sum(check_transition):
+    result = 0
+    for i in range(len(check_transition)):
+        result += sum(check_transition[i])
+    return result
+
+
+def data_training_with_repetition(matrix_of_polynomials, bits_size, step):
+    state_matrix, transition_matrix, check_transition = trellis(matrix_of_polynomials)
+    number_of_registers = matrix_of_polynomials[0].size  # Количество регистров
+    bits = []
+    code_sequences = []
+    state = np.random.randint(2 ** (number_of_registers - 1))
+    states = []
+    while len(bits) < bits_size:
+        while not (check_transition_sum(check_transition) == 2 ** number_of_registers):
+            states.append(state)
+            new_state = choice_next_state_with_repetition(state_matrix, state, check_transition)
+            if state_matrix[state][0] == new_state:
+                bits.append(0)
+                code_sequences.append(transition_matrix[state][0])
+            else:
+                bits.append(1)
+                code_sequences.append(transition_matrix[state][1])
+            state = new_state
+        bit = np.random.randint(2)
+        new_state = state_matrix[state][bit]
+        state = new_state
+        check_transition_zeroing(check_transition)
+    err_bits = step // 2 - 1
+    states = np.array(states[:bits_size])
+    x_train = np.zeros((bits_size, step), np.int32)
+    y_train = np.array(bits[:bits_size])
+    code_sequences = np.array(code_sequences[:bits_size + err_bits]).reshape((bits_size + err_bits) * 2)
+    start = 0
+    for i in range(bits_size):
+        x_train[i] = code_sequences[start:step]
+        start += 2
+        step += 2
+    return x_train, y_train
+
+
+def choice_next_state_without_repetition(state_matrix, state, check_transition):
     if state == state_matrix[state][0] and not check_transition[state][0]:
         check_transition[state][0] = True
         return state
@@ -127,17 +217,11 @@ def choice_next_state(state_matrix, state, check_transition, final_states):
         new_state = state_matrix[state][bit]
         check_transition[state][bit] = True
         return new_state
-    if state_matrix[state][final_states[-1]] == final_states[0]:
-        bit = (~final_states[-1]) % 2
+    else:
+        bit = np.random.randint(2)
         new_state = state_matrix[state][bit]
         check_transition[state][bit] = True
         return new_state
-    if state_matrix[state][final_states[-1]] == final_states[1]:
-        bit = (~final_states[-1]) % 2
-        new_state = state_matrix[state][bit]
-        check_transition[state][bit] = True
-        return new_state
-    return check_next_state(state_matrix, state, check_transition, final_states)
 
 
 def check_transition_zeroing(check_transition):
@@ -145,13 +229,13 @@ def check_transition_zeroing(check_transition):
         check_transition[i] = [False, False]
 
 
-def plot_states(states):
-    numbers_of_states = np.arange(0, states.shape[1], dtype=int)
+def plot_states_without_repetition(*states):
+    numbers_of_states = np.arange(0, len(states[0]), dtype=int)
     fig, ax = plt.subplots()
-    for i in range(states.shape[0]):
-        ax.plot(numbers_of_states, states[i], label=str(i), linestyle=':')
+    for state in states:
+        ax.plot(numbers_of_states, state)
     ax.grid()
-    ax.legend()
+    # ax.legend()
     ax.invert_yaxis()
     plt.show()
 
@@ -169,69 +253,50 @@ def find_final_states(final_states, state, state_matrix):
             final_states[-1] = 1
 
 
-def train_all_data(matrix_of_polynomials, iteration):
+def data_training_without_repetition(matrix_of_polynomials, bits_size, step):
     state_matrix, transition_matrix, check_transition = trellis(matrix_of_polynomials)
-    # for key, value in state_matrix.items():
-    #     print(key, ":", value)
     number_of_registers = matrix_of_polynomials[0].size  # Количество регистров
-    bits = np.zeros(((2 ** number_of_registers + 1) * iteration), dtype=int)
-    out_bits = np.zeros((bits.size, 2), dtype=int)
-    state = np.random.randint(1, 2 ** (number_of_registers - 1) - 1)
-    states = np.zeros((iteration, (2 ** number_of_registers + 1)), dtype=int)
-    counter = 0
-    final_states = np.zeros(3, dtype=int)
-    for i in range(iteration):
-        print(state)
-        find_final_states(final_states, state, state_matrix)
-        for j in range(2 ** number_of_registers):
-            states[i][j] = state
-            new_state = choice_next_state(state_matrix, state, check_transition, final_states)
+    bits = []
+    code_sequences = []
+    state = np.random.randint(2 ** (number_of_registers - 1))
+    states = []
+    while len(bits) < bits_size:
+        while not (sum(check_transition[state]) == 2):
+            states.append(state)
+            new_state = choice_next_state_without_repetition(state_matrix, state, check_transition)
             if state_matrix[state][0] == new_state:
-                bits[counter] = 0
-                out_bits[counter] = transition_matrix[state][0]
-                counter += 1
+                bits.append(0)
+                code_sequences.append(transition_matrix[state][0])
             else:
-                bits[counter] = 1
-                out_bits[counter] = transition_matrix[state][1]
-                counter += 1
+                bits.append(1)
+                code_sequences.append(transition_matrix[state][1])
             state = new_state
-        if state == 0:
-            bit = 1
-        else:
-            bit = np.random.randint(2)
+        bit = np.random.randint(2)
         new_state = state_matrix[state][bit]
         state = new_state
-        states[i][-1] = state
-        print(check_transition)
         check_transition_zeroing(check_transition)
-    plot_states(states)
-    return out_bits
-
-
-def data_test_with_error(bits_size, err, step, matrix_of_polynomials):
+    states = np.array(states[:bits_size])
     err_bits = step // 2 - 1
-    bits_size += err_bits
-    out_bits = np.random.randint(2, size=bits_size)
-    code_sequences = coding_with_speed_1_2(out_bits, matrix_of_polynomials)
+    x_train = np.zeros((bits_size, step), np.int32)
+    y_train = np.array(bits[:bits_size])
+    code_sequences = np.array(code_sequences[:bits_size + err_bits]).reshape((bits_size + err_bits) * 2)
     start = 0
-    x_train = np.zeros((bits_size - err_bits, step), np.int32)
-    y_train = out_bits[:bits_size - err_bits]
-    for i in range(bits_size - err_bits):
-        x_train[i] = np.array(add_noise_in_bits(code_sequences[start:step], err[i]))
+    for i in range(bits_size):
+        x_train[i] = code_sequences[start:step]
         start += 2
         step += 2
-    return x_train, y_train.T
+    return x_train, y_train, states
 
 
 def choice_hyperparameters(labels, model):
     optimizers = np.array(['SGD', 'RMSprop', 'Adam', 'RMSprop', 'Adamax', 'Adadelta', 'Nadam'])
     metrics = np.array(['Accuracy'])
     loss = np.array(['MeanSquaredError'])
-    epochs = np.arange(100, 300, 15, dtype=int)
-    batch_size = np.arange(18, 40, random.randint(1, 4), dtype=int)
-    layers(labels, model)
+    epochs = np.arange(100, 300, dtype=int)
+    batch_size = np.arange(18, 40, dtype=int)
+    layers_and_activation = layers(labels, model)
     return random.choice(optimizers), random.choice(metrics), random.choice(loss), random.choice(epochs), random.choice(
-        batch_size)
+        batch_size), layers_and_activation
 
 
 def neural_model(hyperparameters, model, x_train, y_train, x_test, y_test):
@@ -241,58 +306,123 @@ def neural_model(hyperparameters, model, x_train, y_train, x_test, y_test):
     epochs = hyperparameters[3]
     batch_size = hyperparameters[4]
     model.compile(optimizer=optimizer, loss=loss, metrics=metric)
-    history = model.fit(x_train, y_train, epochs=epochs, batch_size=batch_size)
+    history = model.fit(x_train, y_train, validation_split=0.15, epochs=epochs, batch_size=batch_size, verbose=0)
     result_test = model.evaluate(x_test, y_test)
-    return result_test
+    return history, result_test
 
 
 def layers(labels, model):
     layers_count = random.choice(np.arange(2, 4, 1, dtype=int))
-    layer_size = np.arange(30, 70, random.randint(1, 4), dtype=int)
-    activation = np.array(['relu', 'elu', 'selu', 'tanh', 'softsign'])
-    model.add(tf.keras.layers.Dense(random.choice(layer_size), input_dim=labels, activation=random.choice(activation)))
+    layers_and_activation = {}
+    layer_size = np.arange(30, 70, dtype=int)
+    activations = np.array(['relu', 'elu', 'selu', 'tanh', 'softsign'])
+    units = random.choice(layer_size)
+    activation = random.choice(activations)
+    model.add(tf.keras.layers.Dense(units, input_dim=labels, activation=activation))
+    layers_and_activation[0] = (units, activation)
     for i in range(layers_count - 1):
-        model.add(tf.keras.layers.Dense(units=random.choice(layer_size), activation=random.choice(activation)))
+        units = random.choice(layer_size)
+        activation = random.choice(activations)
+        model.add(tf.keras.layers.Dense(units=units, activation=activation))
+        layers_and_activation[i + 1] = (units, activation)
     model.add(tf.keras.layers.Dense(1, activation='sigmoid'))
+    layers_and_activation[layers_count] = (1, 'sigmoid')
+    return layers_and_activation
 
 
-def choice_neural_model(labels, model, iterations, bits_size, matrix_of_polynomials):
-    x_train, y_train = train_all_data(matrix_of_polynomials)
-    print(x_train, y_train)
-    x_test, y_test = data_training(bits_size, labels, matrix_of_polynomials)
-    hyperparameters_result = []
-    test_result = []
-    for _ in range(iterations):
-        hyperparameters = choice_hyperparameters(labels, model)
-        print(hyperparameters)
-        hyperparameters_result.append(hyperparameters)
-        test_result.append(neural_model(hyperparameters, model, x_train, y_train, x_test, y_test))
-    max_accuracy = test_result[0][1]
-    min_loss = test_result[0][0]
-    max_param = hyperparameters_result[0]
-    for param, result in zip(hyperparameters_result, test_result):
-        if result[1] > max_accuracy and result[0] < min_loss:
-            max_accuracy = result[1]
-            max_param = param
-            min_loss = result[0]
-    print(min_loss, max_accuracy)
+def choice_neural_model(labels, iterations, bits_size, matrix_of_polynomials):
+    x_train_with_repetition, y_train_with_repetition, _ = data_training_with_repetition(matrix_of_polynomials,
+                                                                                        bits_size, labels)
+    x_train_without_repetition, y_train_without_repetition, _ = data_training_without_repetition(matrix_of_polynomials,
+                                                                                                 bits_size, labels)
+    x_train_rand, y_train_rand, _ = data_training_random(matrix_of_polynomials, bits_size, labels)
+    x_train = [x_train_rand, x_train_with_repetition, x_train_without_repetition]
+    y_train = [y_train_rand, y_train_with_repetition, y_train_without_repetition]
+    x_test, y_test, _ = data_training_random(matrix_of_polynomials, bits_size, labels)
+    the_best_neural_models = []
+    for i in range(3):
+        stories = []
+        results = []
+        hyperparameters = []
+        for _ in range(iterations):
+            model = tf.keras.models.Sequential()
+            hyperparameter = choice_hyperparameters(labels, model)
+            hyperparameters.append(hyperparameter)
+            model.summary()
+            history, result = neural_model(hyperparameter, model, x_train[i], y_train[i], x_test, y_test)
+            stories.append(history)
+            results.append(result[0])
+            tf.keras.backend.clear_session()
+        the_best_neural_models.append(hyperparameters[choice_the_best_neural_model(results)])
+    return the_best_neural_models
+
+
+def write_the_best_neural_models(window, bits, the_best_neural_models):
+    path = 'model created: ' + str(datetime.now())
+    data = open(path, "w")
+    np.savetxt(data, np.array([window]))
+    np.savetxt(data, np.array([bits]))
+    np.savetxt(data, the_best_neural_models, fmt="%s")
+    data.close()
+
+
+def plot_training(stories):
+    for history in stories:
+        fig, ax = plt.subplots()
+        ax.plot(history.history['loss'])
+        ax.plot(history.history['val_loss'])
+        plt.title('model accuracy')
+        plt.ylabel('accuracy')
+        plt.xlabel('epoch')
+        plt.legend(['train', 'test'], loc='upper left')
+        plt.show()
+
+
+def choice_the_best_neural_model(result):
+    min_value = min(result)
+    min_index = result.index(min_value)
+    return min_index
+
+
+def neural_network(matrix_of_polynomials, bits_size, labels):
+    x_train, y_train = data_training_with_repetition(matrix_of_polynomials, bits_size, labels)
+    x_test, y_test, = data_test_with_error(matrix_of_polynomials, bits_size, labels, 0.0)
+    input = tf.keras.Input(shape=(labels,), name='input')
+    layer_1 = tf.keras.layers.Dense(units=59, activation='elu', name='hidden_layer_1')(input)
+    layer_2 = tf.keras.layers.Dense(units=51, activation='tanh', name='hidden_layer_2')(layer_1)
+    layer_3 = tf.keras.layers.Dense(units=33, activation='relu', name='hidden_layer_3')(layer_2)
+    output = tf.keras.layers.Dense(units=1, activation='sigmoid', name='output')(layer_3)
+    model = tf.keras.Model(inputs=input, outputs=output)
+    model.compile(optimizer='NAdam', loss=['MeanSquaredError'], metrics=['accuracy'])
+    history = model.fit(x_train, y_train, validation_split=0.15, epochs=190, batch_size=30, verbose=1)
+    results = model.evaluate(x_test, y_test)
+    predictions = model.predict(x_test)
+    for x, y in zip(y_test, predictions):
+        print(x, y)
+    predictions = np.where(predictions > 0.5, 1, 0)
+    print(signal_comparison(y_test, predictions))
+    print(results)
+    # plot_training(stories)
+    return 0
+
+
+def signal_comparison(out_bits: np.array, in_bits: np.array):
+    out_bits = out_bits.reshape(in_bits.shape[0], in_bits.shape[1])
+    errors = sum((out_bits + in_bits) % 2)
+    return errors
 
 
 # g1 = np.array([1, 1, 1])
 # g2 = np.array([1, 0, 1])
 # g1 = np.array([1, 1, 0, 1])  # 15
 # g2 = np.array([1, 1, 1, 1])  # 17
-g1 = np.array([1, 0, 0, 1, 1])  # 23
-g2 = np.array([1, 1, 1, 0, 1])  # 35
-# g1 = np.array([1, 0, 1, 1, 0, 1, 1])  # 133
-# g2 = np.array([1, 1, 1, 1, 0, 0, 1])  # 171
+# g1 = np.array([1, 0, 0, 1, 1])  # 23
+# g2 = np.array([1, 1, 1, 0, 1])  # 35
+g1 = np.array([1, 0, 1, 1, 0, 1, 1])  # 133
+g2 = np.array([1, 1, 1, 1, 0, 0, 1])  # 171
 
 matrix_of_polynomials = np.array([g1, g2])
 bits_size = 5000
-window = 16
-iterations = 5
-# model = tf.keras.models.Sequential()
-# state_matrix, transition_matrix, check_transition = trellis(matrix_of_polynomials)
-# print(state_matrix, transition_matrix, check_transition, sep='\n')
-train_all_data(matrix_of_polynomials, iterations)
-# choice_neural_model(window, model, iterations, bits_size, matrix_of_polynomials)
+window = 18
+iterations = 10
+neural_network(matrix_of_polynomials, bits_size, window)
